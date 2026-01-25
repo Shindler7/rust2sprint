@@ -1,0 +1,3 @@
+[workspace]
+members = ["quote_server", "quote_client", "commons", "macros"]
+resolver = "2"

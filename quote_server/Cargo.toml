@@ -1,0 +1,9 @@
+[package]
+name = "quote_server"
+version = "0.1.0"
+edition = "2024"
+description = "Генератор котировок Quote Server. Яндекс.Практикум 2026"
+
+[dependencies]
+commons = { path = "../commons" }
+macros = { path = "../macros" }
