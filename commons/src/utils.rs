@@ -13,6 +13,6 @@ use std::time::SystemTime;
 pub fn get_timestamp() -> u64 {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(d) => d.as_secs(),
-        Err(_) => panic!("Системное время меньше 1.01.1970 0:00:00 UTC"),
+        Err(_) => panic!("Системное время раньше 01.01.1970 0:00:00 UTC"),
     }
 }
