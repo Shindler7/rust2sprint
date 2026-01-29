@@ -4,14 +4,24 @@
 
 #![warn(missing_docs)]
 
+use crate::generator::QuoteGenerator;
+use std::thread::sleep;
+use std::time::Duration;
+
 mod config;
 mod generator;
-mod utils;
-
-use generator::StockQuote;
+mod tcp;
+mod udp;
 
 fn main() {
-    let obj = StockQuote::generate_new();
+    loop {
+        let generator = QuoteGenerator::generate().unwrap();
+        // if generator.quote.ticker.eq("GOOGL") {
+        //     println!("{}", generator.quote);
+        // }
 
-    println!("{}", obj);
+        println!("{}", generator.quote);
+
+        sleep(Duration::from_millis(100));
+    }
 }

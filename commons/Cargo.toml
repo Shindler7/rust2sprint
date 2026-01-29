@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 thiserror = "2"
 rand = "0.9"
+macros = { path = "../macros" }

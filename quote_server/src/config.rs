@@ -1,35 +1,70 @@
 //! Конфигурация приложения.
 
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use commons::get_ticker_data;
+use commons::utils::get_workspace_root;
 use std::sync::LazyLock;
 
 /// Название каталога для хранения данных проекта.
-pub const DATA_FOLDER: &str = "data";
+const DATA_FOLDER: &str = "data";
 
 /// Название файла, который содержит названия тикеров.
-pub const TICKERS_FILENAME: &str = "tickers.txt";
+const TICKERS_FILENAME: &str = "tickers.txt";
 
+/// Исходный вектор с наименованием тикеров.
 pub static TICKER_DATA: LazyLock<Vec<String>> = LazyLock::new(|| {
-    let path = get_project_root().join(DATA_FOLDER).join(TICKERS_FILENAME);
-    let file = File::open(&path).unwrap_or_else(|e| panic!("Не удалось открыть {:?}: {e}", path));
+    let path = get_workspace_root()
+        .join(DATA_FOLDER)
+        .join(TICKERS_FILENAME);
 
-    BufReader::new(file)
-        .lines()
-        .filter_map(Result::ok)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+    if let Some(tickers) = get_ticker_data(&path) {
+        tickers
+    } else {
+        panic!("Отсутствуют данные о тикерах!")
+    }
 });
 
-/// Диапазон возможных значений стоимости тикетов.
-pub const PRICE_MIN_MAX: (f64, f64) = (1000.0, 1_000_000.0);
+/// Настройки генератора стоимости тикеров.
+#[derive(Clone, Copy)]
+pub struct QuoteGenerateSettings {
+    /// Диапазон цены дорогих тикеров (верхние, например, 10 %).
+    pub expensive: (f64, f64),
+    /// Диапазон цены тикеров средней стоимости (от 10 до 50 %).
+    pub middle: (f64, f64),
+    /// Стоимость тикеров низшего эшелона (50 % и более).
+    pub low: (f64, f64),
 
-/// Диапазон возможных значений объёма ценных бумаг.
-pub const VOLUME_MIN_MAX: (u32, u32) = (1, 500_000);
+    /// Доля "топ" тикеров (по умолчанию 0.1 = 10 %).
+    pub top_share: f64,
+    /// Доля "средних" тикеров (по умолчанию 0.4 = 40 %).
+    pub middle_share: f64,
 
-/// Предоставить родительский каталог проекта.
-pub fn get_project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    /// Диапазон возможных значений объёма разовой сделки с тикерами.
+    pub units_per_trade: (u32, u32),
+    /// Вероятность изменения цены при очередной генерации. Возможное значение
+    /// от 0 до 1 (где 0 всегда `false`, а 1 всегда `true`).
+    pub probability_change_price: f64,
 }
+
+/// Предустановленные значения [`QuoteGenerateSettings`].
+pub static QUOTE_SETTINGS: QuoteGenerateSettings = QuoteGenerateSettings {
+    expensive: (500.0, 1500.0),
+    middle: (100.0, 499.0),
+    low: (0.5, 99.9),
+    top_share: 0.10,
+    middle_share: 0.40,
+    units_per_trade: (1, 500_000),
+    probability_change_price: 0.9,
+};
+
+pub const WELCOME_SERVER: &str = "Welcome to Quote Server!\n";
+pub const WELCOME_INFO: &str = r#"Commands:
+1. Получать данные о всех тикерах:
+STREAM <URL>:<PORT> ALL
+ Пример: udp://127.0.0.1:34254 ALL
+
+2. Получать данные по отдельным тикерам:
+STREAM <URL>:<PORT> <TICKERS, ...>
+ Пример: udp://127.0.0.1:34254 PSA,EMR,DUK,PYPL
+ Ошибки: неверные имена тикеров
+
+Важно: отправка новой команды отменяет прежнюю."#;
