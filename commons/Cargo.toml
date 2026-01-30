@@ -7,3 +7,5 @@ edition = "2024"
 thiserror = "2"
 rand = "0.9"
 macros = { path = "../macros" }
+log="0.4"
+simplelog = "0"

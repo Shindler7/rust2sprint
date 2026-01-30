@@ -6,6 +6,8 @@ use std::sync::LazyLock;
 
 /// Название каталога для хранения данных проекта.
 const DATA_FOLDER: &str = "data";
+/// Название директории для log-файлов.
+pub const LOG_FOLDER: &str = "log";
 
 /// Название файла, который содержит названия тикеров.
 const TICKERS_FILENAME: &str = "tickers.txt";
@@ -56,7 +58,7 @@ pub static QUOTE_SETTINGS: QuoteGenerateSettings = QuoteGenerateSettings {
     probability_change_price: 0.9,
 };
 
-pub const WELCOME_SERVER: &str = "Welcome to Quote Server!\n";
+pub const WELCOME_SERVER: &str = "Успешное подключение к Quote Server!\n\n";
 pub const WELCOME_INFO: &str = r#"Commands:
 1. Получать данные о всех тикерах:
 STREAM <URL>:<PORT> ALL
@@ -67,4 +69,17 @@ STREAM <URL>:<PORT> <TICKERS, ...>
  Пример: udp://127.0.0.1:34254 PSA,EMR,DUK,PYPL
  Ошибки: неверные имена тикеров
 
-Важно: отправка новой команды отменяет прежнюю."#;
+Важно: отправка новой команды отменяет прежнюю.
+
+"#;
+
+/// Адрес сервера для подключения клиентов.
+pub const SERVER_ADDRESS: &str = "127.0.0.1";
+
+/// Порт TCP, на котором сервер принимает подключения.
+pub const SERVER_PORT: u16 = 8888;
+
+/// Адрес сервера в формате `адрес:порт`.
+pub fn server_endpoint() -> String {
+    format!("{}:{}", SERVER_ADDRESS, SERVER_PORT)
+}

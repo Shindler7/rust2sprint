@@ -7,3 +7,4 @@ description = "Генератор котировок Quote Server. Яндекс.
 [dependencies]
 commons = { path = "../commons" }
 macros = { path = "../macros" }
+log="0.4"

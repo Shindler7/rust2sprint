@@ -11,7 +11,7 @@ pub enum QuoteError {
     /// Некорректное значение.
     ///
     /// Например, если ожидается число в диапазоне от 1 до 10, а передано 15.
-    #[error("неверное значение: {0}")]
+    #[error("{0}")]
     ValueError(String),
 
     /// Ошибка генерации тикеров.
@@ -21,6 +21,10 @@ pub enum QuoteError {
     /// Ошибка блокировки mutex.
     #[error("ошибка блокировки: {0}")]
     LockError(String),
+
+    /// Некорректная команда серверу.
+    #[error("{0}")]
+    CommandError(String),
 }
 
 impl<T> From<PoisonError<T>> for QuoteError {
@@ -38,5 +42,10 @@ impl QuoteError {
     /// Конструктор для ошибки [`QuoteError::TickerError`].
     pub fn ticker_err(message: impl Into<String>) -> QuoteError {
         Self::TickerError(message.into())
+    }
+
+    /// Конструктор для ошибки [`QuoteError::CommandError`].
+    pub fn command_err(message: impl Into<String>) -> QuoteError {
+        Self::CommandError(message.into())
     }
 }

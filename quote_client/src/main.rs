@@ -1,3 +1,9 @@
+//! Quote Client. Приложение для взаимодействия с Quote Server.
+
+use std::net::TcpStream;
+
+mod config;
+
 fn main() {
-    println!("Hello, world!");
+    let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
 }

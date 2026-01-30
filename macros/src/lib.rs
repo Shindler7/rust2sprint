@@ -1,7 +1,7 @@
 //! Набор универсальных макросов для приложений Quote.
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Fields, LitStr};
+use syn::{Data, DataStruct, DeriveInput, Fields, LitStr, parse_macro_input};
 
 /// Макрос `QuoteDisplay` автоматически генерирует для структуры реализацию
 /// `Display` и `FromStr`, чтобы сериализовать/десериализовать её в строковый
@@ -144,7 +144,7 @@ pub fn derive_display_fromstr(input: TokenStream) -> TokenStream {
                 match s.trim().to_lowercase().as_str() {
                     #(#from_arms)*
                     _ => Err(QuoteError::value_err(format!(
-                        "Некорректное значение {}: {}",
+                        "некорректное значение {}: '{}'",
                         stringify!(#name), s
                     ))),
                 }

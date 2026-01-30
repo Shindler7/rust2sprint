@@ -1,6 +1,6 @@
 //! Инструменты для генерации данных.
 
-use crate::config::{QuoteGenerateSettings, QUOTE_SETTINGS, TICKER_DATA};
+use crate::config::{QUOTE_SETTINGS, QuoteGenerateSettings, TICKER_DATA};
 use commons::errors::QuoteError;
 use commons::models::{StockQuote, Transaction};
 use commons::randomizer::{random_bool, random_by_tuple, random_choice_str, shuffle_vec};
