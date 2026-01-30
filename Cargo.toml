@@ -1,3 +1,8 @@
 [workspace]
 members = ["quote_server", "quote_client", "commons", "macros"]
 resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+log="0.4"
+

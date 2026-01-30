@@ -2,12 +2,11 @@
 
 use crate::config::{WELCOME_INFO, WELCOME_SERVER};
 use commons::errors::QuoteError;
-use commons::traits::WriteExt;
 use log::{error, info};
 use macros::QuoteEnumDisplay;
-use std::io::{BufRead, BufReader};
-use std::net::TcpStream;
 use std::str::FromStr;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpStream;
 
 /// Перечисление возможных команд для сервера.
 #[derive(QuoteEnumDisplay)]
@@ -39,20 +38,24 @@ impl Commands {
 }
 
 /// Обработчик входных данных соединения.
-pub fn handle_client(stream: TcpStream) {
-    let mut writer = stream.try_clone().expect("Ошибка клонирования TcpStream");
-    let mut reader = BufReader::new(&stream);
-
-    writer.write_str(WELCOME_SERVER);
-    writer.write_str(WELCOME_INFO);
-
+pub async fn handle_client(stream: TcpStream) -> std::io::Result<()> {
     let ip_remote = get_addr_remote(&stream).unwrap_or_else(|| "н/д".to_string());
+
+    let (reader, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader);
+
+    writer.write_all(WELCOME_SERVER.as_bytes()).await?;
+    writer.write_all(WELCOME_INFO.as_bytes()).await?;
+    writer.flush().await?;
+
+    // Терминатор.
+    writer.write_all(b"READY\n").await?;
 
     let mut line = String::new();
     loop {
         line.clear();
-        match reader.read_line(&mut line) {
-            Ok(0) => return,
+        match reader.read_line(&mut line).await {
+            Ok(0) => return Ok(()),
 
             Ok(_) => {
                 let input = line.trim();
@@ -62,29 +65,29 @@ pub fn handle_client(stream: TcpStream) {
                 }
 
                 info!("Получена команда: '{}' от IP: {}", input, ip_remote);
-                match execute_command(&mut line) {
+                match execute_command(input) {
                     Ok(_) => {
-                        writer.write_str("OK\n");
-                        continue;
+                        writer.write_all(b"OK\n").await?;
                     }
                     Err(e) => {
-                        writer.write_str(format!("ОШИБКА: {}\n", e));
+                        writer
+                            .write_all(format!("ОШИБКА: {}\n", e).as_bytes())
+                            .await?;
                         error!("Ошибка команды: {} от IP: {}", e, ip_remote);
-                        continue;
                     }
                 }
             }
 
             Err(_) => {
                 error!("Ошибка чтения: '{}' от IP: {}", line.trim_end(), ip_remote);
-                return;
+                return Ok(());
             }
         }
     }
 }
 
 /// Обработка команд, полученных сервером.
-fn execute_command(input: &mut str) -> Result<(), QuoteError> {
+fn execute_command(input: &str) -> Result<(), QuoteError> {
     let mut parts: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
 
     let command = match Commands::from_str(parts.remove(0).as_str()) {

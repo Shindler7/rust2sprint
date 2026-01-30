@@ -7,4 +7,5 @@ description = "Генератор котировок Quote Server. Яндекс.
 [dependencies]
 commons = { path = "../commons" }
 macros = { path = "../macros" }
-log="0.4"
+tokio.workspace = true
+log.workspace = true

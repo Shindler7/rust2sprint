@@ -6,42 +6,44 @@
 
 use commons::utils::get_workspace_root;
 use log::{error, info};
-use std::net::TcpListener;
-use std::thread;
+use tokio::net::TcpListener;
 
 mod config;
 mod generator;
 mod tcp;
 mod udp;
 
-use crate::tcp::handle_client;
 use commons::init_simple_logger;
-use config::{server_endpoint, LOG_FOLDER};
+use config::{LOG_FOLDER, server_endpoint};
+use tcp::handle_client;
 
-fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
     // Инициализация логгера.
     init_logger();
 
     let endpoint = server_endpoint();
-    let listener = TcpListener::bind(&endpoint)?;
+    let listener = TcpListener::bind(&endpoint).await?;
     println!("Запущен сервер по адресу {}", &endpoint);
     println!("Завершить работу сервера с помощью CTRL-C/CTRL-BREAK.\n");
 
     info!("Quote Server запущен");
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                info!("Рукопожатие: {:?}", stream);
-                thread::spawn(|| handle_client(stream));
+    loop {
+        match listener.accept().await {
+            Ok((stream, addr)) => {
+                info!("Рукопожатие: {:?}", addr);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_client(stream).await {
+                        error!("Ошибка обработки клиента: {}", e);
+                    }
+                });
             }
             Err(e) => {
                 error!("Ошибка работы сервера: {}", e);
             }
         }
     }
-
-    Ok(())
 }
 
 /// Инициализировать логгер приложения.
