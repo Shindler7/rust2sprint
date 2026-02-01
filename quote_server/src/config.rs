@@ -1,29 +1,14 @@
 //! Конфигурация приложения.
 
-use commons::get_ticker_data;
-use commons::utils::get_workspace_root;
-use std::sync::LazyLock;
+use std::ops::RangeInclusive;
 
 /// Название каталога для хранения данных проекта.
-const DATA_FOLDER: &str = "data";
+pub const DATA_FOLDER: &str = "data";
 /// Название директории для log-файлов.
 pub const LOG_FOLDER: &str = "log";
 
 /// Название файла, который содержит названия тикеров.
-const TICKERS_FILENAME: &str = "tickers.txt";
-
-/// Исходный вектор с наименованием тикеров.
-pub static TICKER_DATA: LazyLock<Vec<String>> = LazyLock::new(|| {
-    let path = get_workspace_root()
-        .join(DATA_FOLDER)
-        .join(TICKERS_FILENAME);
-
-    if let Some(tickers) = get_ticker_data(&path) {
-        tickers
-    } else {
-        panic!("Отсутствуют данные о тикерах!")
-    }
-});
+pub const TICKERS_FILENAME: &str = "tickers.txt";
 
 /// Настройки генератора стоимости тикеров.
 #[derive(Clone, Copy)]
@@ -69,17 +54,27 @@ STREAM <URL>:<PORT> <TICKERS, ...>
  Пример: udp://127.0.0.1:34254 PSA,EMR,DUK,PYPL
  Ошибки: неверные имена тикеров
 
-Важно: отправка новой команды отменяет прежнюю.
+3. Отменить ранее заказанную отправку данных:
+CANCEL <URL>:<PORT>
+
+Важно: отправка новой команды БЕЗ ОТМЕНЫ (CANCEL) вернёт ошибку.
 
 "#;
 
+/// Строка-терминатор после приветствия сервера.
+pub const WELCOME_TERMINATOR: &str = "READY\n";
+
 /// Адрес сервера для подключения клиентов.
-pub const SERVER_ADDRESS: &str = "127.0.0.1";
+pub const SERVER_ADDRESS: [u8; 4] = [127, 0, 0, 1];
 
 /// Порт TCP, на котором сервер принимает подключения.
-pub const SERVER_PORT: u16 = 8888;
+pub const DEFAULT_SERVER_PORT: u16 = 8888;
 
-/// Адрес сервера в формате `адрес:порт`.
-pub fn server_endpoint() -> String {
-    format!("{}:{}", SERVER_ADDRESS, SERVER_PORT)
-}
+/// Допустимые значения порта TCP.
+pub const TCP_PORTS_ALLOWED: RangeInclusive<usize> = 1024..=49151;
+
+/// Интервал между генерациями тикеров.
+pub const GEN_TICKERS_DURATION_MS: u64 = 100;
+
+/// Таймаут ожидания пинга от клиента.
+pub const UDP_PING_TIMEOUT_SECS: u64 = 5;

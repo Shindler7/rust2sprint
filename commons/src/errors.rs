@@ -22,6 +22,10 @@ pub enum QuoteError {
     #[error("ошибка блокировки: {0}")]
     LockError(String),
 
+    // Ошибки при работе сервера.
+    #[error("{0}")]
+    ServerError(String),
+
     /// Некорректная команда серверу.
     #[error("{0}")]
     CommandError(String),
@@ -47,5 +51,10 @@ impl QuoteError {
     /// Конструктор для ошибки [`QuoteError::CommandError`].
     pub fn command_err(message: impl Into<String>) -> QuoteError {
         Self::CommandError(message.into())
+    }
+
+    /// Конструктор для ошибки [`QuoteError::ServerError`].
+    pub fn server_err(message: impl Into<String>) -> QuoteError {
+        Self::ServerError(message.into())
     }
 }

@@ -1,34 +1,42 @@
 //! Quote Client. Приложение для взаимодействия с Quote Server.
 
 use log::{info, warn};
-// use std::io::{BufRead, BufReader, Result, Write};
-use std::io::Result;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
+use std::{
+    io::{BufRead, BufReader, Result, Write},
+    net::TcpStream,
+    sync::atomic::{AtomicBool, Ordering},
+    sync::Arc,
+};
 
+mod cli;
 mod config;
+mod udp;
 
-use commons::init_simple_logger;
-use commons::utils::get_workspace_root;
+use cli::parse_cli_args;
+use commons::{init_simple_logger, utils::get_workspace_root};
 use config::LOG_FOLDER;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     init_logger();
+    let client_set = parse_cli_args();
 
     info!("Quote Client запущен");
-    let address = "127.0.0.1:8888";
 
-    let stream = TcpStream::connect(&address).await?;
-    let (reader, mut writer) = stream.into_split();
-    let mut reader = BufReader::new(reader);
+    let stream = TcpStream::connect(client_set.server_addr)
+        .unwrap_or_else(|e| panic!("Ошибка подключения к {}: {}", client_set.server_addr, e));
 
-    info!("Установлено соединение с сервером: {}", address);
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut writer = stream;
 
-    // Пропуск welcome-строк и технической информации.
+    info!(
+        "Установлено соединение с сервером: {}",
+        client_set.server_addr
+    );
+
+    // Пропуск приветствия и служебной информации.
     loop {
         let mut line = String::new();
-        let bytes = reader.read_line(&mut line).await?;
+        let bytes = reader.read_line(&mut line)?;
         if bytes == 0 {
             break;
         }
@@ -37,24 +45,41 @@ async fn main() -> Result<()> {
         }
     }
 
-    let command = "STREAM udp://127.0.0.1:34254 ALL";
+    writer.write_all(client_set.command.as_bytes())?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
 
-    // Отправка установочного запроса на сервер.
-    writer.write_all(command.as_bytes()).await?;
-    writer.write_all(b"\n").await?;
-    writer.flush().await?;
-
-    info!("Отправлена команда: {}", command);
+    info!("Отправлена команда: {}", client_set.command);
 
     let mut server_response = String::new();
-    let bytes = reader.read_line(&mut server_response).await?;
+    let bytes = reader.read_line(&mut server_response)?;
     if bytes == 0 {
         let err_msg = "Пустой ответ от сервера или сервер закрыл соединение.";
         warn!("{}", err_msg);
-        panic!("{}", err_msg);
+        return Ok(());
     }
 
-    info!("Ответ сервера: {}", server_response.trim_end());
+    let response = server_response.trim_end();
+    info!("Ответ сервера: {}", response);
+
+    if !response.starts_with("OK") {
+        warn!("Сервер отклонил команду");
+        return Ok(());
+    }
+
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let stop_flag_clone = stop_flag.clone();
+
+    ctrlc::set_handler(move || {
+        stop_flag_clone.store(true, Ordering::SeqCst);
+    })
+    .expect("Ошибка установки Ctrl-C");
+
+    let udp = udp::UdpClient::bind_url(&client_set.udp_url)?;
+    let ping_handle = udp.spawn_ping(stop_flag.clone());
+
+    udp.recv_loop(stop_flag);
+    let _ = ping_handle.join();
 
     Ok(())
 }

@@ -7,6 +7,24 @@ use syn::{Data, DataStruct, DeriveInput, Fields, LitStr, parse_macro_input};
 /// `Display` и `FromStr`, чтобы сериализовать/десериализовать её в строковый
 /// формат с полями, разделёнными |. Он валидирует количество полей и
 /// возвращает понятные ошибки парсинга.
+///
+/// ## Пример
+///
+/// ```ignore
+/// use macros::QuoteDisplay;
+///
+/// #[derive(Debug, Clone, QuoteDisplay)]
+/// struct Quote {
+///     ticker: String,
+///     price: f64,
+/// }
+///
+/// let quote = Quote {
+///     ticker: "YNX".to_string(),
+///     price: 1000f64,
+/// };
+///
+/// assert_eq!("YNX|1000\n", quote.to_string());
 #[proc_macro_derive(QuoteDisplay)]
 pub fn macros_quote_display(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

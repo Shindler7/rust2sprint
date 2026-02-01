@@ -1,4 +1,12 @@
+# IDE
 .idea/
-/target
+
+# Rust
+/target/
+
+# Data-sources
 /data/
 /log/
+
+# Tech
+/.caches/

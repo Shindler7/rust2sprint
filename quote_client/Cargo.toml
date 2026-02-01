@@ -2,9 +2,16 @@
 name = "quote_client"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.90"
+description = "Сетевой клиент котировок Quote Client. Яндекс.Практикум 2026"
 
 [dependencies]
 commons = { path = "../commons" }
-clap = { version = "4", features = ["derive"] }
-tokio.workspace = true
 log.workspace = true
+clap.workspace = true
+url.workspace = true
+ctrlc.workspace = true
+
+[[bin]]
+name = "qclient"
+path = "src/main.rs"

@@ -1,56 +1,78 @@
 //! Quote Server. Консольное приложение генерации котировок о ценах акций.
-//! Например, для тикеров "AAPL", "GOOGL", "TSLA". Данные включают ряд
-//! параметров, которые можно дополнять.
 
 #![warn(missing_docs)]
 
-use commons::utils::get_workspace_root;
-use log::{error, info};
-use tokio::net::TcpListener;
-
+mod cli;
 mod config;
 mod generator;
 mod tcp;
 mod udp;
 
-use commons::init_simple_logger;
-use config::{LOG_FOLDER, server_endpoint};
-use tcp::handle_client;
+use cli::parse_cli_args;
+use commons::{init_simple_logger, utils::get_workspace_root};
+use config::{GEN_TICKERS_DURATION_MS, LOG_FOLDER};
+use crossbeam_channel::{unbounded, SendTimeoutError, Sender};
+use generator::QuoteGenerator;
+use log::{error, info, warn};
+use std::{io, thread, time::Duration};
+use tcp::run_server;
 
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    // Инициализация логгера.
+fn main() -> io::Result<()> {
     init_logger();
 
-    let endpoint = server_endpoint();
-    let listener = TcpListener::bind(&endpoint).await?;
-    println!("Запущен сервер по адресу {}", &endpoint);
-    println!("Завершить работу сервера с помощью CTRL-C/CTRL-BREAK.\n");
+    info!("Инициализация Quote Server...");
 
-    info!("Quote Server запущен");
+    let cli_args = parse_cli_args();
+    info!("Конфигурация получена: {:?}", cli_args);
 
-    loop {
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                info!("Рукопожатие: {:?}", addr);
-                tokio::spawn(async move {
-                    if let Err(e) = handle_client(stream).await {
-                        error!("Ошибка обработки клиента: {}", e);
-                    }
-                });
-            }
-            Err(e) => {
-                error!("Ошибка работы сервера: {}", e);
-            }
-        }
+    let (quote_tx, quote_rx) = unbounded();
+    start_generator(quote_tx);
+
+    if let Err(err) = run_server(cli_args, quote_rx) {
+        error!("Сервер остановился с ошибкой: {err}");
     }
+
+    info!("Сервер остановлен.");
+    Ok(())
 }
 
 /// Инициализировать логгер приложения.
 ///
-/// Используется метод [`init_simple_logger`] из крейта [`commons`].
+/// Используется метод [`init_simple_logger`] из коробки [`commons`].
 fn init_logger() {
     let log_folder = get_workspace_root().join(LOG_FOLDER);
     let app_name = env!("CARGO_PKG_NAME");
     init_simple_logger(app_name, log_folder);
+}
+
+/// Запустить ленту котировок.
+fn start_generator(tx: Sender<String>) {
+    thread::spawn(move || {
+        let mut generator =
+            QuoteGenerator::new().unwrap_or_else(|err| panic!("ошибка генератора: {err}"));
+
+        info!("Генератор котировок запущен");
+
+        loop {
+            thread::sleep(Duration::from_millis(GEN_TICKERS_DURATION_MS));
+
+            if let Ok(quote) = generator.next_gen() {
+                match tx.send_timeout(
+                    quote.to_string(),
+                    Duration::from_millis(GEN_TICKERS_DURATION_MS),
+                ) {
+                    Ok(_) => (),
+                    Err(SendTimeoutError::Timeout(_)) => {
+                        warn!("Канал котировок занят (timeout)");
+                    }
+                    Err(SendTimeoutError::Disconnected(_)) => {
+                        error!("Канал котировок закрыт");
+                        break;
+                    }
+                }
+            }
+        }
+
+        info!("Генератор котировок остановлен");
+    });
 }

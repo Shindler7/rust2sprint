@@ -12,8 +12,11 @@ pub trait WriteExt {
 
 impl<W: Write> WriteExt for W {
     fn write_str(&mut self, s: impl AsRef<str>) {
-        let _ = self.write_all(s.as_ref().as_bytes());
-        self.flush_ext()
+        let s = s.as_ref();
+        let _ = self.write_all(s.as_bytes());
+        if !s.ends_with('\n') {
+            let _ = self.write_all(b"\n");
+        }
     }
 
     fn flush_ext(&mut self) {

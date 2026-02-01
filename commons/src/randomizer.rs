@@ -81,3 +81,103 @@ pub fn random_bool(prob: f64) -> bool {
     let mut rng = rand::rng();
     rng.random_bool(prob)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_random_choice_str_with_valid_input() {
+        let seq = vec!["one", "two", "three"];
+        let result = random_choice_str(&seq);
+
+        assert!(result.is_some());
+        let chosen = result.unwrap();
+        assert!(seq.contains(&chosen.as_str()));
+    }
+
+    #[test]
+    fn test_random_choice_str_with_empty_input() {
+        let seq: Vec<&str> = vec![];
+        let result = random_choice_str(&seq);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_random_choice_str_with_different_containers() {
+        // Тестируем с массивом
+        let arr = ["apple", "banana"];
+        let result_arr = random_choice_str(arr);
+        assert!(result_arr.is_some());
+
+        // Тестируем с вектором строк
+        let vec_strings = vec!["cat".to_string(), "dog".to_string()];
+        let result_vec = random_choice_str(&vec_strings);
+        assert!(result_vec.is_some());
+    }
+
+    #[test]
+    fn test_shuffle_vec() {
+        let original = vec![1, 2, 3, 4, 5];
+        let shuffled = shuffle_vec(original.clone());
+
+        // Проверяем, что элементы те же
+        assert_eq!(shuffled.len(), 5);
+        assert!(shuffled.iter().all(|item| original.contains(item)));
+
+        // Проверяем, что порядок изменился (с вероятностью 1/120 это может быть ложным срабатыванием)
+        assert_ne!(shuffled, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_random_with_integer_range() {
+        let result = random(1, 10);
+
+        // Проверяем границы
+        assert!((1..=10).contains(&result));
+    }
+
+    #[test]
+    fn test_random_with_float_range() {
+        let result = random(0.0, 1.0);
+
+        // Проверяем границы
+        assert!((0.0..=1.0).contains(&result));
+    }
+
+    #[test]
+    fn test_random_with_same_min_max() {
+        let result = random(42, 42);
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_random_by_tuple() {
+        let range = (5, 15);
+        let result = random_by_tuple(range);
+
+        assert!((5..=15).contains(&result));
+    }
+
+    #[test]
+    fn test_random_bool_extremes() {
+        // Всегда false
+        assert!(!random_bool(0.0));
+
+        // Всегда true
+        assert!(random_bool(1.0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_random_bool_invalid_negative() {
+        random_bool(-0.5);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_random_bool_invalid_greater_than_one() {
+        random_bool(1.5);
+    }
+}

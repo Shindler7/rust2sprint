@@ -2,10 +2,21 @@
 name = "quote_server"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.90"
 description = "Генератор котировок Quote Server. Яндекс.Практикум 2026"
 
 [dependencies]
+# Workspace
+log.workspace = true
+clap.workspace = true
+url.workspace = true
+ctrlc.workspace = true
+# Crates
+crossbeam-channel = "0"
+# Apps
 commons = { path = "../commons" }
 macros = { path = "../macros" }
-tokio.workspace = true
-log.workspace = true
+
+[[bin]]
+name = "qserver"
+path = "src/main.rs"

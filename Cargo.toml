@@ -3,6 +3,7 @@ members = ["quote_server", "quote_client", "commons", "macros"]
 resolver = "2"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
-log="0.4"
-
+log="0"
+clap = { version = "4", features = ["derive"] }
+url="2"
+ctrlc = "3"
