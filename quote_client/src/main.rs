@@ -1,9 +1,10 @@
 //! Quote Client. Приложение для взаимодействия с Quote Server.
 
-use log::{info, warn};
+use log::{error, info, warn};
 use std::{
     io::{BufRead, BufReader, Result, Write},
     net::TcpStream,
+    process::exit,
     sync::atomic::{AtomicBool, Ordering},
     sync::Arc,
 };
@@ -13,11 +14,15 @@ mod config;
 mod udp;
 
 use cli::parse_cli_args;
+use commons::errors::QuoteError;
 use commons::{init_simple_logger, utils::get_workspace_root};
 use config::LOG_FOLDER;
 
 fn main() -> Result<()> {
-    init_logger();
+    if let Err(err) = init_logger() {
+        error!("{}", err);
+        exit(1);
+    }
     let client_set = parse_cli_args();
 
     info!("Quote Client запущен");
@@ -76,9 +81,18 @@ fn main() -> Result<()> {
     .expect("Ошибка установки Ctrl-C");
 
     let udp = udp::UdpClient::bind_url(&client_set.udp_url)?;
-    let ping_handle = udp.spawn_ping(stop_flag.clone());
+    let ping_handle = match udp.spawn_ping(stop_flag.clone()) {
+        Ok(h) => h,
+        Err(err) => {
+            warn!(
+                "Не удалось клонировать UDP‑сокет для {}: {}",
+                client_set.udp_url, err
+            );
+            return Ok(());
+        }
+    };
 
-    udp.recv_loop(stop_flag);
+    udp.recv_loop(stop_flag, client_set.verbose);
     let _ = ping_handle.join();
 
     Ok(())
@@ -87,8 +101,10 @@ fn main() -> Result<()> {
 /// Инициализировать логгер приложения.
 ///
 /// Используется метод [`init_simple_logger`] из крейта [`commons`].
-fn init_logger() {
+fn init_logger() -> std::result::Result<(), QuoteError> {
     let log_folder = get_workspace_root().join(LOG_FOLDER);
     let app_name = env!("CARGO_PKG_NAME");
-    init_simple_logger(app_name, log_folder);
+    init_simple_logger(app_name, log_folder)?;
+
+    Ok(())
 }

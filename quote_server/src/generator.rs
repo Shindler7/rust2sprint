@@ -69,7 +69,7 @@ impl QuoteGenerator {
             .join(DATA_FOLDER)
             .join(TICKERS_FILENAME);
 
-        get_ticker_data(&tickers_file)
+        get_ticker_data(&tickers_file)?
             .ok_or_else(|| QuoteError::ticker_err("отсутствуют данные по тикерам"))
     }
 

@@ -76,5 +76,11 @@ pub const TCP_PORTS_ALLOWED: RangeInclusive<usize> = 1024..=49151;
 /// Интервал между генерациями тикеров.
 pub const GEN_TICKERS_DURATION_MS: u64 = 100;
 
-/// Таймаут ожидания пинга от клиента.
+/// Лимит времени ожидания пинга от клиента (в секундах).
 pub const UDP_PING_TIMEOUT_SECS: u64 = 5;
+
+/// Timeout ожидания сообщения из канала тикеров (миллисекунды).
+pub const CHANNEL_TIMEOUT_MS: u64 = 200;
+
+/// Timeout на операцию чтения из UDP-сокета (миллисекунды).
+pub const SOCKET_READ_TIMEOUT_MS: u64 = 500;

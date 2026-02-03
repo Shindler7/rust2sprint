@@ -7,6 +7,7 @@
 
 use crate::config::*;
 use clap::{Parser, Subcommand};
+use commons::errors::QuoteError;
 use commons::get_ticker_data;
 use log::error;
 use std::fmt::{Display, Formatter};
@@ -25,6 +26,8 @@ enum ExitCode {
     InvalidServerSocket = 1,
     /// Ошибка формирования ссылки UDP.
     InvalidUDP,
+    /// Файл не найден или не содержит данные
+    InvalidTicketFile,
 }
 
 impl ExitCode {
@@ -59,6 +62,10 @@ struct CliArgs {
     /// UDP port for receiving data (for example 34254).
     #[arg(short, long, required = true, value_parser=validate_udp_port)]
     udp: u16,
+
+    /// Print verbose output to console
+    #[arg(short, long, default_value = "false", required = false)]
+    verbose: bool,
 
     /// Supported server commands.
     #[command(subcommand)]
@@ -114,6 +121,8 @@ pub struct ClientSet {
     pub tickers: Vec<String>,
     /// Подготовленная команда для сервера.
     pub command: String,
+    /// Вывод технической информации в консоль.
+    pub verbose: bool,
 }
 
 impl Display for ClientSet {
@@ -131,12 +140,14 @@ impl ClientSet {
         let server_addr = Self::make_server_addr(args.socket, args.port);
         let udp_url = Self::make_udp_url(args.udp);
         let (tickers, command) = Self::tickers_and_command(&args.command, &udp_url);
+        let verbose = args.verbose;
 
         Self {
             server_addr,
             udp_url,
             tickers,
             command,
+            verbose,
         }
     }
 
@@ -165,30 +176,44 @@ impl ClientSet {
     }
 
     /// Получить список тикеров для подписки из файла по переданной ссылке.
-    fn get_tickers(path: &PathBuf) -> Vec<String> {
-        get_ticker_data(path).unwrap_or_default()
+    ///
+    /// ## Returns
+    ///
+    /// Если файл успешно открыт и прочитан, возвращается вектор с данными,
+    /// в ином случае ошибка [`QuoteError`].
+    fn get_tickers(path: &PathBuf) -> Result<Vec<String>, QuoteError> {
+        get_ticker_data(path)?.ok_or_else(|| {
+            QuoteError::ticker_err(format!(
+                "Файл ({}) не содержит данных",
+                path.to_string_lossy()
+            ))
+        })
     }
 
     /// Сформировать команду для сервера на основе пользовательского выбора,
     /// а также вернуть список отобранных тикеров, когда это требуется.
     fn tickers_and_command(command: &Commands, udp_url: &Url) -> (Vec<String>, String) {
+        const STREAM: &str = "STREAM";
+
         match command {
-            Commands::Stream { file: t_file } => {
-                let tickers = match t_file {
-                    Some(t) => Self::get_tickers(t),
-                    None => {
-                        vec![]
-                    }
+            Commands::Cancel => (vec![], format!("CANCEL {udp_url}")),
+
+            Commands::Stream { file } => {
+                let tickers = if let Some(path) = file {
+                    Self::get_tickers(path)
+                        .unwrap_or_else(|e| exit_err(&e.to_string(), ExitCode::InvalidTicketFile))
+                } else {
+                    Vec::new()
                 };
 
-                let args = match tickers.is_empty() {
-                    true => "ALL".to_string(),
-                    false => tickers.join(","),
+                let arg = if tickers.is_empty() {
+                    "ALL".to_string()
+                } else {
+                    tickers.join(",")
                 };
 
-                (tickers, format!("STREAM {} {}", udp_url, args))
+                (tickers, format!("{STREAM} {udp_url} {arg}"))
             }
-            Commands::Cancel => (vec![], format!("CANCEL {}", udp_url)),
         }
     }
 }

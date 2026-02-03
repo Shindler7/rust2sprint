@@ -2,9 +2,10 @@
 
 use crate::errors::QuoteError;
 use macros::{QuoteDisplay, QuoteEnumDisplay};
+use serde::{Deserialize, Serialize};
 
 /// Вид транзакций для биржевого события.
-#[derive(Debug, Clone, QuoteEnumDisplay)]
+#[derive(Debug, Clone, QuoteEnumDisplay, Serialize, Deserialize)]
 pub enum Transaction {
     /// Продажа.
     #[str("sell")]
@@ -15,7 +16,7 @@ pub enum Transaction {
 }
 
 /// Структура биржевого события.
-#[derive(Debug, Clone, QuoteDisplay)]
+#[derive(Debug, Clone, QuoteDisplay, Serialize, Deserialize)]
 pub struct StockQuote {
     /// Короткое наименование биржевого инструмента (тикер).
     pub ticker: String,

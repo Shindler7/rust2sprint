@@ -1,6 +1,8 @@
 //! UDP-клиент для приёма котировок и отправки Ping.
 
-use log::info;
+use crate::config::PING_INTERVAL_SECS;
+use commons::models::StockQuote;
+use log::{error, info};
 use std::{
     io,
     net::{SocketAddr, UdpSocket},
@@ -40,14 +42,11 @@ impl UdpClient {
     }
 
     /// Запустить поток Ping.
-    pub fn spawn_ping(&self, stop: Arc<AtomicBool>) -> JoinHandle<()> {
-        let socket = self
-            .socket
-            .try_clone()
-            .expect("Не удалось клонировать 'socket' UDP");
+    pub fn spawn_ping(&self, stop: Arc<AtomicBool>) -> io::Result<JoinHandle<()>> {
+        let socket = self.socket.try_clone()?;
         let addr = Arc::clone(&self.server_addr);
 
-        thread::spawn(move || {
+        Ok(thread::spawn(move || {
             let mut last = Instant::now();
 
             // Ping ping ping.
@@ -56,20 +55,28 @@ impl UdpClient {
                     break;
                 }
 
-                if last.elapsed() >= Duration::from_secs(2) {
-                    if let Some(target) = *addr.lock().unwrap() {
+                if last.elapsed() >= Duration::from_secs(PING_INTERVAL_SECS) {
+                    if let Ok(guard) = addr.lock()
+                        && let Some(target) = *guard
+                    {
                         let _ = socket.send_to(b"Ping", target);
                     }
+
                     last = Instant::now();
                 }
 
                 thread::sleep(Duration::from_millis(100));
             }
-        })
+        }))
     }
 
-    /// Основной цикл приёма котировок.
-    pub fn recv_loop(&self, stop: Arc<AtomicBool>) {
+    /// Запускает цикл приёма сообщений до получения сигнала остановки.
+    ///
+    /// ## Args
+    /// - `stop` — атомарный флаг для остановки цикла
+    /// - `verbose` — если `True` сообщения дублируются в консоль
+    ///
+    pub fn recv_loop(&self, stop: Arc<AtomicBool>, verbose: bool) {
         let mut buf = [0u8; 1024];
 
         loop {
@@ -81,7 +88,18 @@ impl UdpClient {
                 Ok((size, addr)) => {
                     self.set_server_addr(addr);
                     let msg = String::from_utf8_lossy(&buf[..size]);
-                    println!("{}", msg.trim_end());
+                    match serde_json::from_str::<StockQuote>(&msg) {
+                        Ok(quote) => {
+                            let quote_str = quote.to_string().trim_end().to_owned();
+                            info!("{}", quote_str);
+                            if verbose {
+                                println!("{}", quote_str);
+                            }
+                        }
+                        Err(_) => {
+                            error!("Ошибка десериализации строки от сервера: {msg}");
+                        }
+                    }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 Err(_) => break,

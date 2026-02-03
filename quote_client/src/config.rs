@@ -26,3 +26,6 @@ pub const ALLOW_UDP_PORTS: RangeInclusive<u16> = RangeInclusive::new(1024, 49151
 
 /// Базовый UDP-адрес для приёма данных от сервера.
 pub const UDP_CALLBACK: &str = "127.0.0.1";
+
+/// Интервал отправки ping-сообщений (секунды).
+pub const PING_INTERVAL_SECS: u64 = 2;

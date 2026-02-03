@@ -1,3 +1,4 @@
+use crate::errors::QuoteError;
 use log::*;
 use simplelog::{CombinedLogger, Config, WriteLogger};
 use std::fs;
@@ -20,7 +21,7 @@ pub mod utils;
 /// use commons::get_ticker_data;
 ///
 /// let path_to_file = get_workspace_root().join("data").join("tickers.txt");
-/// let data = get_ticker_data(&path_to_file);
+/// let data = get_ticker_data(&path_to_file).unwrap();
 ///
 /// println!("Data: {:?}", data);
 /// ```
@@ -31,8 +32,14 @@ pub mod utils;
 /// получился пустой.
 ///
 /// Паникует при невозможности извлечь данные.
-pub fn get_ticker_data(path: &PathBuf) -> Option<Vec<String>> {
-    let file = File::open(path).unwrap_or_else(|e| panic!("Не удалось открыть {:?}: {e}", path));
+pub fn get_ticker_data(path: &PathBuf) -> Result<Option<Vec<String>>, QuoteError> {
+    let file = File::open(path).map_err(|err| {
+        QuoteError::ticker_err(format!(
+            "Не удалось открыть файл с тикерами {}: {}",
+            path.to_string_lossy(),
+            err
+        ))
+    })?;
 
     let tickers: Vec<String> = BufReader::new(file)
         .lines()
@@ -42,9 +49,9 @@ pub fn get_ticker_data(path: &PathBuf) -> Option<Vec<String>> {
         .collect();
 
     if tickers.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(tickers)
+    Ok(Some(tickers))
 }
 
 /// Фабрика по созданию индивидуальных логгеров для приложений.
@@ -75,27 +82,35 @@ pub fn get_ticker_data(path: &PathBuf) -> Option<Vec<String>> {
 /// error!("Шторм разрушил усадьбу, сэр!");
 /// ```
 ///
-/// ## Паника
-///
-/// Паникует при ошибке создания (открытия) директории и (или) log-файла,
+/// Возвращает ошибки создания (открытия) директории и (или) log-файла,
 /// и при инициализации логгера (предоставляет сообщение о причинах, если
 /// есть).
-pub fn init_simple_logger(app_name: &str, log_dir: PathBuf) {
+pub fn init_simple_logger(app_name: &str, log_dir: PathBuf) -> Result<(), QuoteError> {
     let config = Config::default();
     let log_file_path = log_dir.join(format!("{}.log", app_name));
 
     if !log_dir.exists() {
-        fs::create_dir_all(&log_dir)
-            .unwrap_or_else(|_| panic!("Не удалось сформировать путь: {}", log_dir.display()));
+        fs::create_dir_all(&log_dir).map_err(|_| {
+            QuoteError::runtime_err(format!(
+                "не удалось сформировать путь: {}",
+                log_dir.display()
+            ))
+        })?;
     }
 
-    let log_file = File::create(&log_file_path)
-        .unwrap_or_else(|_| panic!("Ошибка работы с log-файлом: {}", log_file_path.display()));
+    let log_file = File::create(&log_file_path).map_err(|_| {
+        QuoteError::runtime_err(format!(
+            "ошибка работы с log-файлом: {}",
+            log_file_path.display()
+        ))
+    })?;
 
     let logger = WriteLogger::new(LevelFilter::Info, config, log_file);
 
     CombinedLogger::init(vec![logger])
-        .unwrap_or_else(|e| panic!("Ошибка инициализации логгера: {e}"));
+        .map_err(|e| QuoteError::runtime_err(format!("ошибка инициализации логгера: {e}")))?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -113,6 +128,8 @@ mod tests {
         let path = temp_file.path().to_path_buf();
         let result = get_ticker_data(&path);
 
+        assert!(result.is_ok());
+        let result = result.unwrap();
         assert!(result.is_some());
         let tickers = result.unwrap();
         assert_eq!(tickers.len(), 5);
@@ -129,6 +146,8 @@ mod tests {
         let path = temp_file.path().to_path_buf();
         let result = get_ticker_data(&path);
 
+        assert!(result.is_ok());
+        let result = result.unwrap();
         assert!(result.is_some());
         let tickers = result.unwrap();
         assert_eq!(tickers.len(), 4); // Пустые строки должны быть отфильтрованы
@@ -136,10 +155,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Не удалось открыть")]
     fn test_get_ticker_data_with_nonexistent_file() {
+        // Передан некорректный путь к файлу.
         let non_existent_path = PathBuf::from("/non/existent/path/tickers.txt");
-        get_ticker_data(&non_existent_path);
+        let result = get_ticker_data(&non_existent_path);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -149,6 +169,8 @@ mod tests {
         let path = temp_file.path().to_path_buf();
         let result = get_ticker_data(&path);
 
+        assert!(result.is_ok());
+        let result = result.unwrap();
         assert!(result.is_none());
     }
 }

@@ -1,11 +1,14 @@
 //! Механизация TCP-сервера.
 
+use crate::channels;
+use crate::channels::gen_tickers_dispatcher;
 use crate::cli::ServerSet;
 use crate::config::{WELCOME_INFO, WELCOME_SERVER, WELCOME_TERMINATOR};
 use crate::generator::QuoteGenerator;
+use crate::models::{ClientManager, ClientSubscription};
 use crate::udp::spawn_stream;
 use commons::{errors::QuoteError, traits::WriteExt};
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use log::{error, info};
 use macros::QuoteEnumDisplay;
 use std::sync::{
@@ -13,13 +16,13 @@ use std::sync::{
     Mutex,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::Display,
     io,
     io::{BufRead, BufReader},
     net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr,
-    thread::sleep,
+    thread::{sleep, spawn},
     time::Duration,
 };
 use url::Url;
@@ -114,6 +117,7 @@ impl Command {
         &self,
         unique_id: usize,
         tcp_addr: SocketAddr,
+        sender: Sender<String>,
         recv: Receiver<String>,
         cmd_parts: Vec<String>,
     ) -> Result<ClientSubscription, QuoteError> {
@@ -133,19 +137,20 @@ impl Command {
                     return Err(QuoteError::command_err("поддерживается только UDP"));
                 }
 
-                let tickers_set: HashSet<String> = QuoteGenerator::get_ticker_data()
-                    .map_err(|_| QuoteError::command_err("отсутствуют тикеры"))?
-                    .into_iter()
-                    .collect();
-
                 let tickers = match cmd_parts[1].to_uppercase().as_str() {
-                    "ALL" => tickers_set,
+                    "ALL" => HashSet::new(),
                     _ => {
+                        let tickers_set: HashSet<String> = QuoteGenerator::get_ticker_data()
+                            .map_err(|_| QuoteError::command_err("отсутствуют тикеры"))?
+                            .into_iter()
+                            .collect();
+
                         let input_set: HashSet<String> = cmd_parts[1]
                             .split(',')
                             .map(|s| s.trim().to_uppercase())
                             .filter(|s| !s.is_empty())
                             .collect();
+
                         if input_set.is_subset(&tickers_set) {
                             input_set
                         } else {
@@ -155,7 +160,7 @@ impl Command {
                 };
 
                 Ok(ClientSubscription::new(
-                    unique_id, tcp_addr, udp_url, tickers, recv,
+                    unique_id, tcp_addr, udp_url, tickers, sender, recv,
                 ))
             }
             _ => Err(QuoteError::value_err(
@@ -165,83 +170,8 @@ impl Command {
     }
 }
 
-/// Подписчик на котировки.
-#[derive(Debug, Clone)]
-pub(crate) struct ClientSubscription {
-    /// Уникальный ID сессии.
-    pub unique_id: usize,
-    /// TCP-адрес клиента.
-    pub tcp_addr: SocketAddr,
-    /// UDP-адрес для стрима.
-    pub udp_url: Url,
-    /// Список тикеров.
-    pub tickers: HashSet<String>,
-    /// Канал котировок.
-    pub recv: Receiver<String>,
-    /// Флаг остановки.
-    pub stop_flag: Arc<AtomicBool>,
-}
-
-impl ClientSubscription {
-    /// Создать нового клиента.
-    pub fn new(
-        unique_id: usize,
-        tcp_addr: SocketAddr,
-        udp_url: Url,
-        tickers: HashSet<String>,
-        recv: Receiver<String>,
-    ) -> Self {
-        let stop_flag = Arc::new(AtomicBool::new(false));
-        Self {
-            unique_id,
-            tcp_addr,
-            udp_url,
-            tickers,
-            recv,
-            stop_flag,
-        }
-    }
-}
-
-/// Менеджер клиентов.
-#[derive(Debug, Default)]
-struct ClientManager {
-    /// `HashMap` активных клиентов, где ключ — уникальный id сессии.
-    clients: HashMap<usize, ClientSubscription>,
-}
-
-impl ClientManager {
-    /// Создать менеджера.
-    fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
-
-    /// Проверить, существует ли клиент с предоставленным id.
-    fn id_exists(&self, unique_id: usize) -> bool {
-        self.clients.contains_key(&unique_id)
-    }
-
-    /// Добавить нового клиента.
-    fn add_client(&mut self, client: ClientSubscription) -> Result<(), QuoteError> {
-        if self.id_exists(client.unique_id) {
-            return Err(QuoteError::value_err("Клиент уже существует"));
-        }
-        self.clients.insert(client.unique_id, client);
-        Ok(())
-    }
-
-    /// Удалить клиента.
-    fn remove_client(&mut self, unique_id: usize) -> Result<ClientSubscription, QuoteError> {
-        self.clients
-            .remove(&unique_id)
-            .ok_or_else(|| QuoteError::command_err("задачи отсутствуют"))
-    }
-}
-
 /// Организатор работы TCP-сервера.
-pub fn run_server(settings: ServerSet, receiver: Receiver<String>) -> io::Result<()> {
+pub fn run_server(settings: ServerSet) -> io::Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     ctrlc::set_handler(move || {
@@ -249,6 +179,18 @@ pub fn run_server(settings: ServerSet, receiver: Receiver<String>) -> io::Result
     })
     .unwrap_or_else(|e| panic!("Ошибка установки Ctrl-C: {}", e));
 
+    // Инициализация окружения.
+    let client_manager = Arc::new(Mutex::new(ClientManager::new()));
+    let clients = Arc::clone(&client_manager);
+
+    let (quote_tx, quote_rx) = unbounded();
+    let handle_gen = channels::start_generator(quote_tx);
+
+    let stop_dispatcher = Arc::new(AtomicBool::new(false));
+    let handle_tickers_dispatcher =
+        gen_tickers_dispatcher(quote_rx, clients, stop_dispatcher.clone());
+
+    // Запуск сервера.
     let listener = TcpListener::bind(settings.server_addr)?;
     listener.set_nonblocking(true)?;
 
@@ -256,20 +198,26 @@ pub fn run_server(settings: ServerSet, receiver: Receiver<String>) -> io::Result
     println!("Завершить работу сервера с помощью CTRL-C/CTRL-BREAK.\n");
     info!("Quote Server запущен");
 
-    let client_manager = Arc::new(Mutex::new(ClientManager::new()));
-
     loop {
         if !running.load(Ordering::SeqCst) {
             info!("Работа сервера прервана...");
+            stop_dispatcher.store(true, Ordering::SeqCst);
             break;
         }
 
         match listener.accept() {
             Ok((stream, addr)) => {
-                let recv = receiver.clone();
+                let id_client = gen_id();
+
+                // Создание персонального канала Диспечтер - клиент.
+                let (tx_client, rx_client) = unbounded();
+
                 let clients = Arc::clone(&client_manager);
+
                 info!("Рукопожатие: {:?}", addr);
-                std::thread::spawn(move || handle_client(stream, addr, recv, clients));
+                spawn(move || {
+                    handle_client(stream, addr, tx_client, rx_client, clients, id_client)
+                });
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 sleep(Duration::from_millis(50));
@@ -281,6 +229,9 @@ pub fn run_server(settings: ServerSet, receiver: Receiver<String>) -> io::Result
         }
     }
 
+    info!("Завершение работы...");
+
+    // Остановка клиентов.
     if let Ok(mut manager) = client_manager.lock() {
         for (_, client) in manager.clients.iter_mut() {
             client.stop_flag.store(true, Ordering::SeqCst);
@@ -288,15 +239,37 @@ pub fn run_server(settings: ServerSet, receiver: Receiver<String>) -> io::Result
         }
     }
 
+    // Остановка потоков.
+    if let Err(err) = handle_gen.join() {
+        error!("Поток генератора завершился с паникой: {:?}", err);
+    }
+
+    // Остановка диспетчера.
+    if let Err(err) = handle_tickers_dispatcher.join() {
+        error!("Диспетчер потока завершился паникой: {:?}", err);
+    }
+
     Ok(())
 }
 
 /// Взаимодействие с новым клиентом.
+///
+/// ## Args
+///
+/// - `stream` — экземпляр `TcpStream` сервер-клиент
+/// - `addr` — адрес сокета клиента
+/// - `sender` — канал отправки сообщения клиенту (`crossbeam_channel`)
+/// - `receiver` — канал получения сообщения клиентом (`crossbeam_channel`)
+///   для получения трансляции тикеров
+/// - `clients` — ссылка на структуру клиентов [`ClientManager`]
+/// - `id_clients` — индвидуальный ID клиента
 fn handle_client(
     stream: TcpStream,
     addr: SocketAddr,
+    sender: Sender<String>,
     receiver: Receiver<String>,
     clients: Arc<Mutex<ClientManager>>,
+    id_client: usize,
 ) -> io::Result<()> {
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
@@ -305,8 +278,6 @@ fn handle_client(
     writer.write_str(WELCOME_INFO);
     writer.flush_ext();
     writer.write_str(WELCOME_TERMINATOR);
-
-    let id_client = gen_id();
 
     let mut line = String::new();
     loop {
@@ -326,9 +297,13 @@ fn handle_client(
                 let cmd = parts.remove(0);
                 match Command::from_str(&cmd) {
                     Ok(Command::Stream) => {
-                        let recv = receiver.clone();
-                        let client = match Command::Stream.make_client(id_client, addr, recv, parts)
-                        {
+                        let client = match Command::Stream.make_client(
+                            id_client,
+                            addr,
+                            sender.clone(),
+                            receiver.clone(),
+                            parts,
+                        ) {
                             Ok(c) => c,
                             Err(err) => {
                                 ServerResponse::err(err.to_string().as_str()).send(
@@ -395,28 +370,28 @@ mod tests {
 
     #[test]
     fn stream_command_all_is_valid() {
-        let (tx, rx) = unbounded();
-        drop(tx);
+        let (tx, _) = unbounded();
+        let (_, rx2) = unbounded();
 
         let cmd = Command::Stream;
         let tcp_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
 
         let parts = vec!["udp://127.0.0.1:34254".into(), "ALL".into()];
-        let client = cmd.make_client(1, tcp_addr, rx, parts);
+        let client = cmd.make_client(1, tcp_addr, tx, rx2, parts);
 
         assert!(client.is_ok());
     }
 
     #[test]
     fn stream_command_rejects_bad_udp_scheme() {
-        let (tx, rx) = unbounded();
-        drop(tx);
+        let (tx, _) = unbounded();
+        let (_, rx2) = unbounded();
 
         let cmd = Command::Stream;
         let tcp_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
 
         let parts = vec!["http://127.0.0.1:34254".into(), "ALL".into()];
-        let client = cmd.make_client(1, tcp_addr, rx, parts);
+        let client = cmd.make_client(1, tcp_addr, tx, rx2, parts);
 
         assert!(client.is_err());
     }

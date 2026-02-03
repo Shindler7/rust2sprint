@@ -29,6 +29,10 @@ pub enum QuoteError {
     /// Некорректная команда серверу.
     #[error("{0}")]
     CommandError(String),
+
+    /// Системная ошибка, аналог Panic, когда дальнейшая работа невозможна.
+    #[error("RuntimeError: {0}")]
+    RunTimeError(String),
 }
 
 impl<T> From<PoisonError<T>> for QuoteError {
@@ -56,5 +60,10 @@ impl QuoteError {
     /// Конструктор для ошибки [`QuoteError::ServerError`].
     pub fn server_err(message: impl Into<String>) -> QuoteError {
         Self::ServerError(message.into())
+    }
+
+    /// Конструктор для ошибки [`QuoteError::RunTimeError`].
+    pub fn runtime_err(message: impl Into<String>) -> QuoteError {
+        Self::RunTimeError(message.into())
     }
 }
