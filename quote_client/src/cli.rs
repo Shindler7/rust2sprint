@@ -9,7 +9,7 @@ use crate::config::*;
 use clap::{Parser, Subcommand};
 use commons::errors::QuoteError;
 use commons::get_ticker_data;
-use log::error;
+use log::{error, info};
 use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::RangeInclusive;
@@ -211,6 +211,8 @@ impl ClientSet {
                 } else {
                     tickers.join(",")
                 };
+
+                info!("Собраны тикеры из файла: {}", arg);
 
                 (tickers, format!("{STREAM} {udp_url} {arg}"))
             }

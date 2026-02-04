@@ -98,10 +98,16 @@ pub fn init_simple_logger(app_name: &str, log_dir: PathBuf) -> Result<(), QuoteE
         })?;
     }
 
-    let log_file = File::create(&log_file_path).map_err(|_| {
+    let log_file = if log_file_path.is_file() {
+        File::options().append(true).open(&log_file_path)
+    } else {
+        File::create(&log_file_path)
+    }
+    .map_err(|err| {
         QuoteError::runtime_err(format!(
-            "ошибка работы с log-файлом: {}",
-            log_file_path.display()
+            "ошибка работы с log-файлом ({}): {}",
+            log_file_path.display(),
+            err
         ))
     })?;
 

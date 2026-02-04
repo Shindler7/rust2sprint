@@ -65,7 +65,7 @@ pub fn spawn_stream(client: ClientSubscription) {
                 };
 
                 if !client.tickers.is_empty() && !client.tickers.contains(&stock_quote.ticker) {
-                    return;
+                    continue;
                 }
 
                 let _ = socket.send_to(quote.as_bytes(), udp_addr);
@@ -84,8 +84,8 @@ mod tests {
     use std::collections::HashSet;
     use std::net::{SocketAddr, UdpSocket};
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     };
     use std::time::Duration;
     use url::Url;
